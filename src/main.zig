@@ -10,7 +10,7 @@ const libgit = @cImport({
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
-    // const allocator = gpa.allocator();
+    const allocator = gpa.allocator();
     const repository_path = "./";
 
     errdefer print_error();
@@ -68,8 +68,8 @@ pub fn main() !void {
         return GitError.InitError;
     }
 
-    // const refs_arr = try StrArray.init(allocator, push_refs);
-    // defer refs_arr.deinit();
+    var refs_arr = try StrArray.init(allocator);
+    defer refs_arr.deinit();
 
     while(true) {
         var branch_ref: ?*libgit.git_reference = null;
@@ -84,15 +84,16 @@ pub fn main() !void {
         defer libgit.git_reference_free(branch_ref);
 
         const branch_ref_name = libgit.git_reference_name(branch_ref);
+        try refs_arr.append(std.mem.span(branch_ref_name));
         std.debug.print("{s} is a branch \n", .{branch_ref_name});
+
     }
 
-    //
-    // const as_lg_array = refs_arr.libgit_view();
-    // ret = libgit.git_remote_push(remote, @ptrCast(&as_lg_array), &opts);
-    // if (ret != 0) {
-    //     return GitError.InitError;
-    // }
+    const as_lg_array = try refs_arr.libgit_view();
+    ret = libgit.git_remote_push(remote, @ptrCast(&as_lg_array), &opts);
+    if (ret != 0) {
+        return GitError.InitError;
+    }
 }
 
 

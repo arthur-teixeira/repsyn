@@ -5,67 +5,65 @@ const libgit = @cImport({
 
 pub const StrArray = struct{
     allocator: std.mem.Allocator,
-    count: usize,
-    strings: [][*c]u8,
-    refs: [][]u8,
+    strings: std.ArrayList([]u8),
+    refs: ?[][]u8,
+    cref: ?[][*c]u8,
 
     pub fn init(
         allocator: std.mem.Allocator,
-        list: []const []const u8,
     ) !StrArray {
-        var out = StrArray {
+        return StrArray {
             .allocator = allocator,
-            .count = list.len,
-            .strings = try allocator.alloc([*c]u8, list.len),
-            .refs = try allocator.alloc([]u8, list.len),
+            .strings = try std.ArrayList([]u8).initCapacity(allocator, 10),
+            .refs = null,
+            .cref = null,
         };
-
-        for (list, 0..) |item, i| {
-            const cstring = try allocator.alloc(u8, item.len + 1);
-            @memcpy(cstring[0..item.len], item);
-            cstring[item.len] = 0;
-            out.refs[i] = cstring;
-        }
-
-        return out;
     }
 
     pub fn deinit(
-        self: StrArray
+        self: *StrArray
     ) void {
-        for (self.refs) |ref| {
-            self.allocator.free(ref);
+        if (self.refs != null) {
+            for (self.refs.?) |ref| {
+                self.allocator.free(ref);
+            }
+            self.allocator.free(self.refs.?);
         }
-        self.allocator.free(self.strings);
-        self.allocator.free(self.refs);
+
+        if (self.cref != null) {
+            self.allocator.free(self.cref.?);
+        }
+
+        for (self.strings.items) |item| {
+            self.allocator.free(item);
+        }
+
+        self.strings.deinit(self.allocator);
     }
 
-    pub fn libgit_view(
-        self: StrArray
-    ) libgit.git_strarray {
+    pub fn append(self: *StrArray, str: []const u8) !void {
+        const n = try self.allocator.alloc(u8, str.len);
+        @memcpy(n, str);
+        return self.strings.append(self.allocator, n);
+    }
+
+    pub fn libgit_view(self: *StrArray) !libgit.git_strarray {
+        self.cref = try self.allocator.alloc([*c]u8, self.strings.items.len);
+        self.refs = try self.allocator.alloc([]u8, self.strings.items.len);
         var out = libgit.git_strarray{
-            .strings = null,
-            .count = self.strings.len,
+            .strings = self.cref.?.ptr,
+            .count = self.strings.items.len,
         };
 
-        out.strings = self.strings.ptr;
+        for (self.strings.items, 0..) |item, i| {
+            const cstring = try self.allocator.alloc(u8, item.len + 1);
+            @memcpy(cstring[0..item.len], item);
+            cstring[item.len] = 0;
 
-        for (self.refs, 0..) |item, i| {
-            out.strings[i] = item.ptr;
+            self.refs.?[i] = cstring;
+            out.strings[i] = cstring.ptr;
         }
 
         return out;
     }
 };
-
-
-pub fn free_strarray(allocator: std.mem.Allocator, s: libgit.git_strarray) void {
-    for (0..s.count) |i| {
-        if (s.strings[i] != null) {
-            allocator.free(@as([*]u8, @ptrCast(s.strings[i])));
-            // allocator.free(s.strings[i]);
-        }
-    }
-
-    // allocator.free(s.strings);
-}
