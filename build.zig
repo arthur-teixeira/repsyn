@@ -19,7 +19,6 @@ pub fn build(b: *std.Build) void {
     exe.root_module.linkSystemLibrary("crypto", .{});
     exe.root_module.linkSystemLibrary("gssapi_krb5", .{});
 
-
     exe.root_module.addIncludePath(b.path("./libgit2/include"));
     exe.root_module.addObjectFile(b.path("./libgit2/lib/libgit2.a"));
 

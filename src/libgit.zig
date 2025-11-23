@@ -2,6 +2,7 @@ const std = @import("std");
 const libgit = @cImport({
     @cInclude("git2.h");
 });
+const stderr = @import("./stderr.zig");
 const StrArrayBuilder = @import("./strarray.zig").StrArrayBuilder;
 
 pub const GitError = error {
@@ -64,9 +65,23 @@ pub const Repository = struct {
     }
 
     fn set_remote_list(self: *Repository) !void {
-        const ret = libgit.git_remote_list(&self.remotes, self.repo);
+        var ret = libgit.git_remote_list(&self.remotes, self.repo);
         if (ret != 0) {
             return GitError.InitError;
+        }
+
+        for (0..self.remotes.count) |i| {
+            const remote_name = self.remotes.strings[i];
+            var remote: ?*libgit.struct_git_remote = null;
+            ret = libgit.git_remote_lookup(&remote, self.repo, remote_name);
+            if (ret != 0) {
+                return GitError.InitError;
+            }
+            const url = libgit.git_remote_url(remote);
+            const remote_str = std.mem.span(remote_name);
+            const url_str =  std.mem.span(url);
+
+            std.debug.print("remote {s} has url {s}\n", .{remote_str, url_str});
         }
     }
 
@@ -103,7 +118,9 @@ pub const Repository = struct {
     pub fn push_to_remotes(self: *Repository) !void {
         for (0..self.remotes.count) |i| {
             const remote = self.remotes.strings[i];
+            stderr.print("Pushing to {s}\n", .{remote});
             try self.push_to_remote(remote);
+            stderr.print("\n", .{});
         }
     }
 
@@ -123,6 +140,12 @@ pub const Repository = struct {
 };
 
 fn progress_cb(current: c_uint, total: c_uint, bytes: usize, _: ?*anyopaque) callconv (.c) c_int {
-    std.debug.print("Pushed {d}/{d} objects, total bytes: {d}\n", .{current, total, bytes});
+    if (total == 0) {
+        stderr.print("\tAlready up to date\n", .{});
+        stderr.print("\x1b[1F", .{});
+        return 0;
+    }
+    stderr.print("\tPushed {d}/{d} objects, total bytes: {d}\n", .{current, total, bytes});
+    stderr.print("\x1b[1F", .{});
     return 0;
 }
