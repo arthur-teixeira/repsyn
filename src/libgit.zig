@@ -51,6 +51,8 @@ pub const Repository = struct {
         if (ret != 0) {
             return GitError.InitError;
         }
+
+        self.callbacks.push_transfer_progress = progress_cb;
     }
 
     fn set_push_opts(self: *Repository) !void {
@@ -119,3 +121,8 @@ pub const Repository = struct {
         }
     }
 };
+
+fn progress_cb(current: c_uint, total: c_uint, bytes: usize, _: ?*anyopaque) callconv (.c) c_int {
+    std.debug.print("Pushed {d}/{d} objects, total bytes: {d}\n", .{current, total, bytes});
+    return 0;
+}
