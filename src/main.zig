@@ -151,9 +151,6 @@ pub fn main() !void {
     };
     defer parsed.deinit();
 
-    const repository_path = "./";
-    errdefer print_error();
-
     const ret = libgit.git_libgit2_init();
     if (ret == 0) {
         return GitError.InitError;
@@ -163,10 +160,15 @@ pub fn main() !void {
     }
     defer _ = libgit.git_libgit2_shutdown();
 
-    var repo = try git.Repository.init(allocator, repository_path);
-    defer repo.deinit();
+    var it = parsed.repository_paths.iterator();
+    while (it.next()) |repo_path| {
+        std.debug.print("INFO: handling repository {s}\n", .{repo_path.*});
+        var repo = try git.Repository.init(allocator, repo_path.*);
+        defer repo.deinit();
+        try repo.push_to_remotes();
+    }
 
-    try repo.push_to_remotes();
+    errdefer print_error();
 }
 
 fn print_error() void {
