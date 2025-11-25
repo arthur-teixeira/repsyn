@@ -16,27 +16,22 @@ const Remote = struct {
 
 const Args = struct {
     allocator: std.mem.Allocator,
-    repository_paths: std.ArrayList([]u8),
-    origins: std.ArrayList([]u8),
+    repository_paths: std.BufSet,
+    remotes: std.ArrayList(Remote),
 
     fn deinit(self: *Args) void {
         for (self.repository_paths.items) |r| {
             self.allocator.free(r);
         }
         self.repository_paths.deinit(self.allocator);
-
-        for (self.origins.items) |o| {
-            self.allocator.free(o);
-        }
-
-        self.allocator.free(self.origins);
+        self.remotes.deinit(self.allocator);
     }
 
-    fn init(allocator: std.mem.Allocator, args: *std.process.ArgIterator) ?Args {
+    fn init(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !?Args {
         const repositories = resolve_repositories_from_mode(allocator, args) orelse return null;
         std.debug.print("REPOSITORIES {any}\n", .{repositories});
 
-        _ = parse_remotes(allocator, args) orelse return null;
+        _ = try parse_remotes(allocator, args) orelse return null;
 
         return null;
     }
@@ -55,12 +50,12 @@ fn usage(program: []const u8) void {
     std.debug.print("\t{s}--repo{s} {s}path{s}: specify a single repository path.\n", .{underlineStart, underlineEnd, underlineStart, underlineEnd});
 }
 
-fn resolve_file(allocator: std.mem.Allocator, file_path: []const u8) !std.ArrayList([]u8) {
+fn resolve_file(allocator: std.mem.Allocator, file_path: []const u8) !std.BufSet {
     const cwd = std.fs.cwd();
     const f = cwd.openFile(file_path, .{}) catch |err| {
         if (err == std.fs.File.OpenError.FileNotFound) {
             stderr.print("ERROR: Could not open file {s}: File not found\n", .{file_path});
-            std.os.linux.exit(1);
+            std.process.exit(1);
         }
         return err;
     };
@@ -69,14 +64,19 @@ fn resolve_file(allocator: std.mem.Allocator, file_path: []const u8) !std.ArrayL
     var read_buf: [4096]u8 = undefined;
     var rdr = f.reader(&read_buf);
 
-    var strings: std.ArrayList([]u8) = try .initCapacity(allocator, 10);
+    var strings: std.BufSet = .init(allocator);
     while (rdr.interface.takeDelimiter('\n')) |line| {
         if (line == null) {
             break;
         }
 
-        try strings.append(allocator, line.?);
+        try strings.insert(allocator, line.?);
     } else |err| return err;
+
+    if (strings.count() == 0) {
+        stderr.print("ERROR: source file is empty\n", .{});
+        std.process.exit(1);
+    }
 
     return strings;
 }
@@ -89,15 +89,13 @@ fn resolve_folder(_: std.mem.Allocator, folder_path: []const u8) !?std.ArrayList
     return null;
 }
 
-fn resolve_single_repository(allocator: std.mem.Allocator, repository: []const u8) !std.ArrayList([]u8) {
-    var a: std.ArrayList([]u8) = try .initCapacity(allocator, 1);
-    const str = try allocator.alloc(u8, repository.len);
-    @memcpy(str, repository);
-    try a.append(allocator, str);
+fn resolve_single_repository(allocator: std.mem.Allocator, repository: []const u8) !std.BufSet {
+    var a: std.BufSet = try .init(allocator);
+    try a.insert(repository);
     return a;
 }
 
-fn resolve_repositories_from_mode(allocator: std.mem.Allocator, args: *std.process.ArgIterator) ?std.ArrayList([]u8) {
+fn resolve_repositories_from_mode(allocator: std.mem.Allocator, args: *std.process.ArgIterator) ?std.BufSet {
     const mode = args.next() orelse return null;
     const param = args.next() orelse return null;
     std.debug.print("MODE {s} PARAM {s}\n", .{mode, param});
@@ -117,9 +115,8 @@ fn resolve_repositories_from_mode(allocator: std.mem.Allocator, args: *std.proce
     return null;
 }
 
-// TODO: improve error handling to handle NULLs as parsing errors (print usage) and errors normally 
-fn parse_remotes(allocator: std.mem.Allocator, args: *std.process.ArgIterator) ?std.ArrayList(Remote) {
-    var remotes: std.ArrayList(Remote) = .initCapacity(allocator, 10) catch return null;
+fn parse_remotes(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !?std.ArrayList(Remote) {
+    var remotes: std.ArrayList(Remote) = try .initCapacity(allocator, 10);
     while (args.next()) |arg| {
         if (!std.mem.eql(u8, arg, "-o")) {
             break;
@@ -127,9 +124,10 @@ fn parse_remotes(allocator: std.mem.Allocator, args: *std.process.ArgIterator) ?
 
         const remote_name = args.next() orelse return null;
         const remote_url = args.next() orelse return null;
-        const remote = try allocator.create(Remote);
-        remote.name = remote_name;
-        remote.url = remote_url;
+        const remote = Remote {
+            .name = remote_name,
+            .url = remote_url,
+        };
 
         try remotes.append(allocator, remote);
     }
@@ -150,11 +148,11 @@ pub fn main() !void {
     defer args.deinit();
     const program_name = args.next().?;
 
-    const parsed: ?Args = .init(allocator, &args);
-    if (parsed == null) {
+    var parsed = try Args.init(allocator, &args) orelse {
         usage(program_name);
         return;
-    }
+    };
+    defer parsed.deinit();
 
     const repository_path = "./";
     errdefer print_error();
