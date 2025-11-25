@@ -17,11 +17,11 @@ const Remote = struct {
 const Args = struct {
     allocator: std.mem.Allocator,
     repository_paths: std.BufSet,
-    remotes: std.ArrayList(Remote),
+    remotes: std.StringArrayHashMap([]const u8),
 
     fn deinit(self: *Args) void {
         self.repository_paths.deinit();
-        self.remotes.deinit(self.allocator);
+        self.remotes.deinit();
     }
 
     fn init(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !?Args {
@@ -116,21 +116,17 @@ fn resolve_repositories_from_mode(allocator: std.mem.Allocator, args: *std.proce
     return null;
 }
 
-fn parse_remotes(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !?std.ArrayList(Remote) {
-    var remotes: std.ArrayList(Remote) = try .initCapacity(allocator, 10);
+fn parse_remotes(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !?std.StringArrayHashMap([]const u8) {
+    var remotes: std.StringArrayHashMap([]const u8) = .init(allocator);
     while (args.next()) |arg| {
         if (!std.mem.eql(u8, arg, "-o")) {
             break;
         }
 
         const remote_name = args.next() orelse return null;
+        // No need to allocate the value, since its a pointer to argv which lives for the entire program runtime
         const remote_url = args.next() orelse return null;
-        const remote = Remote {
-            .name = remote_name,
-            .url = remote_url,
-        };
-
-        try remotes.append(allocator, remote);
+        try remotes.put(remote_name, remote_url);
     }
 
     return remotes;
