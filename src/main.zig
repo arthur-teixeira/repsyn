@@ -20,10 +20,7 @@ const Args = struct {
     remotes: std.ArrayList(Remote),
 
     fn deinit(self: *Args) void {
-        for (self.repository_paths.items) |r| {
-            self.allocator.free(r);
-        }
-        self.repository_paths.deinit(self.allocator);
+        self.repository_paths.deinit();
         self.remotes.deinit(self.allocator);
     }
 
@@ -31,9 +28,13 @@ const Args = struct {
         const repositories = resolve_repositories_from_mode(allocator, args) orelse return null;
         std.debug.print("REPOSITORIES {any}\n", .{repositories});
 
-        _ = try parse_remotes(allocator, args) orelse return null;
+        const remotes = try parse_remotes(allocator, args) orelse return null;
 
-        return null;
+        return Args{
+            .allocator = allocator,
+            .repository_paths = repositories,
+            .remotes = remotes,
+        };
     }
 };
 
@@ -70,7 +71,7 @@ fn resolve_file(allocator: std.mem.Allocator, file_path: []const u8) !std.BufSet
             break;
         }
 
-        try strings.insert(allocator, line.?);
+        try strings.insert(line.?);
     } else |err| return err;
 
     if (strings.count() == 0) {
@@ -81,7 +82,7 @@ fn resolve_file(allocator: std.mem.Allocator, file_path: []const u8) !std.BufSet
     return strings;
 }
 
-fn resolve_folder(_: std.mem.Allocator, folder_path: []const u8) !?std.ArrayList([]u8) {
+fn resolve_folder(_: std.mem.Allocator, folder_path: []const u8) !?std.BufSet {
     const cwd = std.fs.cwd();
     var folder = try cwd.openDir(folder_path, .{});
     defer folder.close();
@@ -90,7 +91,7 @@ fn resolve_folder(_: std.mem.Allocator, folder_path: []const u8) !?std.ArrayList
 }
 
 fn resolve_single_repository(allocator: std.mem.Allocator, repository: []const u8) !std.BufSet {
-    var a: std.BufSet = try .init(allocator);
+    var a: std.BufSet = .init(allocator);
     try a.insert(repository);
     return a;
 }
