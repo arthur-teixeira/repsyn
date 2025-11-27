@@ -75,7 +75,6 @@ pub const StrArrayBuilder = struct{
             out.strings[i] = item.ptr;
         }
 
-
         return out;
     }
 };
