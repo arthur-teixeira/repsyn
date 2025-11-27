@@ -103,6 +103,7 @@ fn resolve_folder(allocator: std.mem.Allocator, folder_path: []const u8, ignores
         if (f.kind != .directory) {
             continue;
         }
+
         if (ignores.contains(f.name)) {
             stderr.print("Ignoring folder {s}\n", .{f.name});
             continue;
@@ -209,15 +210,30 @@ pub fn main() !void {
     }
     defer _ = libgit.git_libgit2_shutdown();
 
+    var threads = try allocator.alloc(std.Thread, parsed.repository_paths.count());
+    defer allocator.free(threads);
     var it = parsed.repository_paths.iterator();
+    var i: u32 = 0;
     while (it.next()) |repo_path| {
-        std.log.info("handling repository {s}\n", .{repo_path.*});
-        var repo = try git.Repository.init(allocator, repo_path.*);
-        defer repo.deinit();
-        try repo.push_to_remotes();
+        const thread = try std.Thread.spawn(.{}, handle_repo, .{allocator, repo_path});
+        threads[i] = thread;
+        i += 1;
     }
 
+    for (threads) |thread| {
+        thread.join();
+    }
+
+    stderr.print("Finished.\n", .{});
+
     errdefer print_error();
+}
+
+fn handle_repo(allocator: std.mem.Allocator, repo_path: *[]const u8) !void {
+    std.log.info("handling repository {s}\n", .{repo_path.*});
+    var repo = try git.Repository.init(allocator, repo_path.*);
+    defer repo.deinit();
+    try repo.push_to_remotes();
 }
 
 fn print_error() void {
