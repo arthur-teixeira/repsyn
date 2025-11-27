@@ -25,8 +25,8 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(exe);
     const run_step = b.step("run", "Run the app");
 
-    const clap = b.dependency("clap", .{});
-    exe.root_module.addImport("clap", clap.module("clap"));
+    const clap = b.dependency("zig-time", .{});
+    exe.root_module.addImport("zig-time", clap.module("zig-time"));
 
     const run_cmd = b.addRunArtifact(exe);
     run_step.dependOn(&run_cmd.step);

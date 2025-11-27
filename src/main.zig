@@ -184,12 +184,13 @@ fn parse_lists(allocator: std.mem.Allocator, args: *std.process.ArgIterator, par
 }
 
 pub fn main() !void {
-    var stderrBuf: [4096]u8 = undefined;
-    stderr.init(&stderrBuf);
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
+
+    var stderrBuf: [4096]u8 = undefined;
+    stderr.init(allocator, &stderrBuf);
 
     var args = std.process.args();
     defer args.deinit();
@@ -230,7 +231,7 @@ pub fn main() !void {
 }
 
 fn handle_repo(allocator: std.mem.Allocator, repo_path: *[]const u8) !void {
-    std.log.info("handling repository {s}\n", .{repo_path.*});
+    stderr.print("Syncing repository {s}\n", .{repo_path.*});
     var repo = try git.Repository.init(allocator, repo_path.*);
     defer repo.deinit();
     try repo.push_to_remotes();

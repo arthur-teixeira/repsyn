@@ -36,6 +36,10 @@
             .url = "git+https://github.com/Hejsil/zig-clap#b7e3348ed60f99ba32c75aa707ff7c87adc31b36",
             .hash = "clap-0.11.0-oBajB-TnAQC7yPLnZRT5WzHZ_4Ly4dX2OILskli74b9H",
         },
+        .@"zig-time" = .{
+            .url = "git+https://github.com/deatil/zig-time?ref=main#5c62c666350da909019f91f682471e14ba6fbc3f",
+            .hash = "zig_time-1.2.0-FD_-ClelAQB4hP6Tf3zIp3csi91UlUuO55dak6gbaXh8",
+        },
     },
     .paths = .{
         "build.zig",
