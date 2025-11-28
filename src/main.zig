@@ -196,28 +196,24 @@ pub fn main() !void {
     }
     defer _ = libgit.git_libgit2_shutdown();
 
-    var threads = try allocator.alloc(std.Thread, parsed.repository_paths.count());
-    defer allocator.free(threads);
     var it = parsed.repository_paths.iterator();
-    var i: u32 = 0;
-    while (it.next()) |repo_path| {
-        const thread = try std.Thread.spawn(.{}, handle_repo, .{allocator, repo_path});
-        threads[i] = thread;
-        i += 1;
-    }
 
-    for (threads) |thread| {
-        thread.join();
+    var pool: std.Thread.Pool = undefined;
+    try pool.init(.{ .allocator = allocator, .n_jobs = 5 });
+    defer pool.deinit();
+
+    while (it.next()) |repo_path| {
+        try pool.spawn(handle_repo, .{allocator, repo_path});
     }
 
     stderr.print("Finished.\n", .{});
 }
 
-fn handle_repo(allocator: std.mem.Allocator, repo_path: *[]const u8) !void {
+fn handle_repo(allocator: std.mem.Allocator, repo_path: *[]const u8) void {
     errdefer print_error(repo_path.*);
-    var repo = try git.Repository.init(allocator, repo_path.*);
+    var repo = git.Repository.init(allocator, repo_path.*) catch return;
     defer repo.deinit();
-    try repo.push_to_remotes();
+    repo.push_to_remotes() catch {};
 }
 
 fn print_error(repo_path: []const u8) void {
