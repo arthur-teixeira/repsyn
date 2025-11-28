@@ -16,7 +16,6 @@ const Args = struct {
 
     fn deinit(self: *Args) void {
         self.repository_paths.deinit();
-        self.remotes.deinit();
         self.ignores.deinit();
     }
 
@@ -158,20 +157,10 @@ fn resolve_repositories_from_mode(allocator: std.mem.Allocator, mode: [:0]const 
 }
 
 fn parse_lists(allocator: std.mem.Allocator, args: *std.process.ArgIterator, parsed_args: *Args) !bool {
-    var remotes: std.StringArrayHashMap([]const u8) = .init(allocator);
     var ignores: std.BufSet = .init(allocator);
     while (args.next()) |arg| {
-        const is_o = std.mem.eql(u8, arg, "-o");
-        const is_e = std.mem.eql(u8, arg, "-e");
-        if (!is_o and !is_e) {
-            break;
-        }
-
-        if (is_o) {
-            const remote_name = args.next() orelse return false;
-            const remote_url = args.next() orelse return false;
-            try remotes.put(remote_name, remote_url);
-            continue;
+        if (!std.mem.eql(u8, arg, "-e")) {
+            return false;
         }
 
         const folder_name = args.next() orelse return false;
@@ -179,12 +168,10 @@ fn parse_lists(allocator: std.mem.Allocator, args: *std.process.ArgIterator, par
     }
 
     parsed_args.ignores = ignores;
-    parsed_args.remotes = remotes;
     return true;
 }
 
 pub fn main() !void {
-
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
@@ -226,20 +213,19 @@ pub fn main() !void {
     }
 
     stderr.print("Finished.\n", .{});
-
-    errdefer print_error();
 }
 
 fn handle_repo(allocator: std.mem.Allocator, repo_path: *[]const u8) !void {
+    errdefer print_error(repo_path.*);
     stderr.print("Syncing repository {s}\n", .{repo_path.*});
     var repo = try git.Repository.init(allocator, repo_path.*);
     defer repo.deinit();
     try repo.push_to_remotes();
 }
 
-fn print_error() void {
+fn print_error(repo_path: []const u8) void {
     const err = libgit.git_error_last();
     if (err != null) {
-        std.log.err("{s}\n", .{err.*.message});
+        stderr.print("[{s}] ERROR: {s}\n", .{repo_path, err.*.message});
     }
 }

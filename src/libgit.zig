@@ -18,7 +18,7 @@ pub const Repository = struct {
     allocator: std.mem.Allocator,
     repo: *libgit.struct_git_repository,
     branches: StrArrayBuilder,
-    remotes: libgit.git_strarray,
+    remote_set: std.BufSet,
     push_opts: libgit.git_push_options,
     callbacks: libgit.git_remote_callbacks,
     path: []const u8,
@@ -45,8 +45,8 @@ pub const Repository = struct {
 
     pub fn deinit(self: *Repository) void {
         libgit.git_repository_free(self.repo);
-        libgit.git_strarray_free(&self.remotes);
         self.branches.deinit();
+        self.remote_set.deinit();
     }
 
     fn set_callbacks(self: *Repository) !void {
@@ -67,24 +67,18 @@ pub const Repository = struct {
     }
 
     fn set_remote_list(self: *Repository) !void {
-        const ret = libgit.git_remote_list(&self.remotes, self.repo);
+        var remotes: libgit.git_strarray = undefined;
+        const ret = libgit.git_remote_list(&remotes, self.repo);
         if (ret != 0) {
             return GitError.InitError;
         }
+        defer libgit.git_strarray_free(&remotes);
 
-        // for (0..self.remotes.count) |i| {
-        //     const remote_name = self.remotes.strings[i];
-        //     var remote: ?*libgit.struct_git_remote = null;
-        //     ret = libgit.git_remote_lookup(&remote, self.repo, remote_name);
-        //     if (ret != 0) {
-        //         return GitError.InitError;
-        //     }
-        //     const url = libgit.git_remote_url(remote);
-        //     const remote_str = std.mem.span(remote_name);
-        //     const url_str =  std.mem.span(url);
-        //
-        //     std.debug.print("remote {s} has url {s}\n", .{remote_str, url_str});
-        // }
+        self.remote_set = .init(self.allocator);
+        for (0..remotes.count) |i| {
+            const remote_name = remotes.strings[i];
+            try self.remote_set.insert(std.mem.span(remote_name));
+        }
     }
 
     fn set_branch_list(self: *Repository) !void {
@@ -118,19 +112,19 @@ pub const Repository = struct {
     }
 
     pub fn push_to_remotes(self: *Repository) !void {
-        for (0..self.remotes.count) |i| {
-            const remote = self.remotes.strings[i];
-            stderr.print("[{s}] Pushing to {s}\n", .{self.path, remote});
-            try self.push_to_remote(remote);
-            stderr.print("[{s}] Pushed to {s}\n", .{self.path, remote});
+        var it = self.remote_set.iterator();
+        while(it.next()) |remote| {
+            stderr.print("[{s}] Pushing to {s}\n", .{self.path, remote.*});
+            try self.push_to_remote(remote.*);
+            stderr.print("[{s}] Pushed to {s}\n", .{self.path, remote.*});
         }
 
         stderr.print("[{s}] Finished\n", .{self.path});
     }
 
-    fn push_to_remote(self: *Repository, remote_name: [*c]const u8) !void {
+    fn push_to_remote(self: *Repository, remote_name: []const u8) !void {
         var remote: ?*libgit.struct_git_remote = null;
-        var ret = libgit.git_remote_lookup(&remote, self.repo, remote_name);
+        var ret = libgit.git_remote_lookup(&remote, self.repo, remote_name.ptr);
         if (ret != 0) {
             return GitError.InitError;
         }
