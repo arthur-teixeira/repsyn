@@ -11,7 +11,6 @@ const stderr = @import("./stderr.zig");
 const Args = struct {
     allocator: std.mem.Allocator,
     repository_paths: std.BufSet,
-    remotes: std.StringArrayHashMap([]const u8),
     ignores: std.BufSet,
 
     fn deinit(self: *Args) void {
@@ -23,7 +22,6 @@ const Args = struct {
         var self = Args{
             .allocator = allocator,
             .repository_paths = undefined,
-            .remotes = undefined,
             .ignores = undefined,
         };
         const mode = args.next() orelse return null;
@@ -217,7 +215,6 @@ pub fn main() !void {
 
 fn handle_repo(allocator: std.mem.Allocator, repo_path: *[]const u8) !void {
     errdefer print_error(repo_path.*);
-    stderr.print("Syncing repository {s}\n", .{repo_path.*});
     var repo = try git.Repository.init(allocator, repo_path.*);
     defer repo.deinit();
     try repo.push_to_remotes();
